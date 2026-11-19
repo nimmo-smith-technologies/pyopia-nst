@@ -1,7 +1,7 @@
 [project]
-name = "PyOPIA"
+name = "pyopia-nst"
 dynamic = ["version"]
-description = "A Python Ocean Particle Image Analysis toolbox."
+description = "NST build of PyOPIA, a Python Ocean Particle Image Analysis toolbox (installs as the pyopia package)."
 authors = [
     { name = "Emlyn Davies", email = "emlyn.davies@sintef.no" },
     { name = "Alex Nimmo Smith", email = "alex@nimmosmith.co.uk" },
@@ -80,7 +80,8 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/sintef/pyopia"
+Repository = "https://github.com/nimmo-smith-technologies/pyopia-nst"
+Upstream = "https://github.com/sintef/pyopia"
 Documentation = "https://pyopia.readthedocs.io"
 
 [project.scripts]

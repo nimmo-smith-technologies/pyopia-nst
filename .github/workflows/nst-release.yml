@@ -1,0 +1,82 @@
+name: NST release (image and GitHub release)
+
+# Runs when a four-part version tag such as 2.19.0.1 is pushed to a commit on
+# nst-release. Docker tags cannot contain "+", so the NST build number is a
+# fourth dotted part rather than a local version label.
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/nimmo-smith-technologies/pyopia-nst
+
+jobs:
+  release:
+    name: Build image and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check the tag, the package version and the branch agree
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' pyopia/__init__.py)
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match __version__ $version" >&2
+            exit 1
+          fi
+          if ! grep -q '^name = "pyopia-nst"$' pyproject.toml; then
+            echo "pyproject.toml does not name the package pyopia-nst" >&2
+            exit 1
+          fi
+          git fetch origin nst-release
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/nst-release; then
+            echo "Tagged commit is not on nst-release" >&2
+            exit 1
+          fi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.ref_name }}
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          upstream=${GITHUB_REF_NAME%.*}
+          {
+            echo "PyOPIA NST build of upstream PyOPIA ${upstream}."
+            echo
+            echo "Included on top of upstream:"
+            git log --merges --first-parent --format='- %s' origin/main.."$GITHUB_SHA"
+            echo
+            echo "Docker image: ${IMAGE}:${GITHUB_REF_NAME}"
+            echo "Wheel and sdist are attached. The package is pyopia-nst and the import name is pyopia."
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" --notes-file notes.md
