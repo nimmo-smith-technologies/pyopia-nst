@@ -47,7 +47,7 @@ The pull request goes to SINTEF/pyopia when the change is ready. To ship it earl
 
 ### Cutting a release (maintainers)
 
-From a clone with `nst-ops` checked out:
+Run the workflow `NST cut release` from the Actions tab and enter the version, for example `2.19.0.1`. It rebuilds `nst-release`, sets the version and pushes the tag. The same steps by hand, from a clone with `nst-ops` checked out:
 
 ```bash
 scripts/nst-rebuild-release.sh --version 2.19.0.1 --push
