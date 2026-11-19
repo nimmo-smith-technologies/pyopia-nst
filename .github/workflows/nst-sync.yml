@@ -1,0 +1,75 @@
+name: NST sync with upstream
+
+# Fast-forwards main from SINTEF/pyopia and rebases nst-patches and every
+# feature/* branch onto it. Opens an issue when a rebase conflicts.
+#
+# Needs a repository secret NST_SYNC_TOKEN: a fine-grained personal access
+# token for this repository with Contents (write), Workflows (write) and
+# Issues (write). The built-in GITHUB_TOKEN cannot push commits that touch
+# .github/workflows, which upstream changes do from time to time.
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nst-sync
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.NST_SYNC_TOKEN }}
+
+      - name: Set committer for rebases
+        run: |
+          git config user.name "pyopia-nst sync"
+          git config user.email "actions@users.noreply.github.com"
+
+      - name: Sync main and rebase branches
+        run: scripts/nst-sync.sh
+
+      - name: Report conflicts and stale branches as issues
+        env:
+          GH_TOKEN: ${{ secrets.NST_SYNC_TOKEN }}
+        run: |
+          upstream=$(cat sync-report/upstream.txt)
+          find_issue() {
+            gh issue list --state open --search "in:title \"$1\"" \
+              --json number,title --jq ".[] | select(.title == \"$1\") | .number" | head -1
+          }
+
+          for b in $(cat sync-report/conflicts.txt); do
+            title="Rebase conflict: $b"
+            n=$(find_issue "$title")
+            if [ -z "$n" ]; then
+              gh issue create --title "$title" --body \
+                "Rebasing \`$b\` onto upstream \`main\` ($upstream) stopped on a conflict, so the branch was left as it was. Rebase it by hand and push it; this issue closes itself on the next sync that rebases cleanly."
+            else
+              gh issue comment "$n" --body "Still conflicting against upstream \`main\` ($upstream)."
+            fi
+          done
+
+          for b in $(cat sync-report/merged.txt); do
+            title="Branch looks merged upstream: $b"
+            n=$(find_issue "$title")
+            [ -n "$n" ] || gh issue create --title "$title" --body \
+              "After rebasing onto upstream \`main\` ($upstream), \`$b\` has no commits left, so upstream probably contains it. Delete the branch and remove it from \`nst-release.conf\` if so."
+          done
+
+          if grep -qx main sync-report/diverged.txt; then
+            title="main has diverged from upstream"
+            n=$(find_issue "$title")
+            [ -n "$n" ] || gh issue create --title "$title" --body \
+              "\`main\` is not an ancestor of upstream \`main\` ($upstream), so it was not fast-forwarded. main should only ever mirror upstream; find out what changed upstream (a force push?) or what was committed here."
+          fi
+
+          # Close conflict issues for branches that now rebase cleanly.
+          for b in $(cat sync-report/rebased.txt sync-report/clean.txt); do
+            n=$(find_issue "Rebase conflict: $b")
+            [ -z "$n" ] || gh issue close "$n" --comment "Rebased cleanly onto upstream \`main\` ($upstream)."
+          done
