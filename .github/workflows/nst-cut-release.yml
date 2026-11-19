@@ -1,0 +1,54 @@
+name: NST cut release
+
+# Rebuilds nst-release from main and the branches in nst-release.conf, sets the
+# version, and pushes the tag that starts "NST release (image and GitHub
+# release)". Run it from the Actions tab with the version, for example 2.19.0.1.
+#
+# Uses the NST_SYNC_TOKEN secret (see nst-sync.yml). A tag pushed with the
+# built-in token would not start the release workflow, a personal token does.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Four-part version, upstream version plus build number (for example 2.19.0.1)"
+        required: true
+        type: string
+
+concurrency:
+  group: nst-release
+
+jobs:
+  cut:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.NST_SYNC_TOKEN }}
+
+      - name: Set author for the release commits
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+
+      - name: Refuse to reuse a tag
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null; then
+            echo "Tag $VERSION already exists" >&2
+            exit 1
+          fi
+
+      - name: Rebuild and push nst-release
+        env:
+          VERSION: ${{ inputs.version }}
+        run: scripts/nst-rebuild-release.sh --version "$VERSION" --push
+
+      - name: Tag and push
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git tag "$VERSION" nst-release
+          git push origin "refs/tags/$VERSION"
