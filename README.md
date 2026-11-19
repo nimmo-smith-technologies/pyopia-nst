@@ -30,6 +30,27 @@ The image behaves like the upstream one (see the Docker section of the upstream 
 
 Upstream squash-merges pull requests, so one long branch rebased forever would pile up conflicts. Keeping each change on its own branch means a change that lands upstream simply empties its branch and comes off the list.
 
+### Naming branches
+
+Feature branches are named `feature/<type>-<subject>`. The `feature/` prefix is what the daily sync and `nst-release.conf` recognise, so every change that is meant to ship uses it, fixes included.
+
+| Type | Use | Example |
+|---|---|---|
+| `fix` | Corrects a bug. | `feature/fix-process-crash` |
+| `add` | New capability. | `feature/add-processing-engine` |
+| `change` | Alters existing behaviour: a default, a deprecation, performance, a refactor. | `feature/change-merge-on-by-default` |
+| `remove` | Deletes code or an option. | `feature/remove-dead-background-helpers` |
+| `docs` | Documentation only. | `feature/docs-differences-from-upstream` |
+
+- The subject is a short noun phrase naming the thing affected, in lowercase with hyphens. It does not name an application, an issue number or a date.
+- A branch has exactly one type. If two fit, it is two changes and so two branches. When in doubt between `fix` and `change`, ask whether anyone would reasonably call the old behaviour correct: if so, it is a `change`.
+- Feature branches are not stacked on each other, because the daily sync rebases each one onto `main`. A change that needs another waits for it to merge or takes it as a cherry-pick.
+- Branches are never deleted. A merged or abandoned branch stays as part of the record.
+- Scratch work and safety copies live in local branches called `wip/<name>` and `backup/<name>-<short-sha>`. They are not pushed.
+- Release tags have four parts, such as `2.19.0.1`, and are created only by the `NST cut release` workflow.
+
+Branches offered to SINTEF/pyopia are named as upstream prefers; the names here do not have to match.
+
 ### Daily sync
 
 The workflow `NST sync with upstream` runs every day (and on demand). It fast-forwards `main` from SINTEF/pyopia, then rebases `nst-patches` and every `feature/*` branch onto the new `main` and pushes them with `--force-with-lease`. Conflicts on the `__version__` line of `pyopia/__init__.py` are resolved automatically: a feature branch gets the new upstream patch version plus one, which is what upstream's version check asks of a pull request. Any other conflict leaves the branch untouched and opens an issue named `Rebase conflict: <branch>`. The issue closes itself on the first sync that rebases that branch cleanly. A branch with nothing left after the rebase gets an issue called `Branch looks merged upstream: <branch>`. If `main` is no longer an ancestor of upstream `main`, nothing is moved and an issue says so.
